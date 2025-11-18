@@ -15,6 +15,7 @@ pub async fn run(
     let app = Router::new()
         .route("/health_check", get(health_check))
         .route("/subscriptions", post(subscribe))
+        // .layer(axum_messages::MessagesManagerLayer)
         .with_state(db_pool);
 
     Ok(axum::serve(listener, app.into_make_service()))
