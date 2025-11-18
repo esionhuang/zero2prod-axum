@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use secrecy::ExposeSecret;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use tokio::net::TcpListener;
 use uuid::Uuid;
@@ -51,16 +52,17 @@ async fn spawn_app() -> TestApp {
 
 /// 配置测试用数据库
 async fn configure_database(config: &DatabaseSettings) -> sqlx::Pool<sqlx::Postgres> {
-    let mut connection = PgConnection::connect(&config.connection_string_without_db())
-        .await
-        .expect("Failed to connect to Postgres");
+    let mut connection =
+        PgConnection::connect(&config.connection_string_without_db().expose_secret())
+            .await
+            .expect("Failed to connect to Postgres");
 
     connection
         .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
         .await
         .expect("Failed to create database.");
 
-    let connection_pool = PgPool::connect(&config.connection_string())
+    let connection_pool = PgPool::connect(&config.connection_string().expose_secret())
         .await
         .expect("Failed to connect to Postgres.");
 
@@ -94,14 +96,12 @@ async fn health_check_work() {
 async fn subscribe_returns_a_200_for_valid_form_data() {
     let app = spawn_app().await;
 
-    let configuration_string = get_configuration()
-        .expect("Failed to read configuration")
-        .database
-        .connection_string();
+    let configuration = get_configuration().expect("Failed to read configuration");
 
-    let mut connection = PgConnection::connect(&configuration_string)
-        .await
-        .expect("Failed to connect to Postgres.");
+    let mut connection =
+        PgConnection::connect(&configuration.database.connection_string().expose_secret())
+            .await
+            .expect("Failed to connect to Postgres.");
 
     let client = reqwest::Client::new();
 
