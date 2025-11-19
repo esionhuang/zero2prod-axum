@@ -14,7 +14,6 @@ pub struct FormData {
     name = "Add a new subscriber",
     skip(pool, form),
     fields(
-        request_id = %Uuid::new_v4(),
         subscriber_name = %form.name,
         subscriber_email = %form.email
     )
@@ -25,10 +24,7 @@ pub async fn subscribe(
 ) -> impl IntoResponse {
     match insert_subscriber(&pool, &form).await {
         Ok(_) => StatusCode::OK,
-        Err(e) => {
-            println!("Failed to execute query: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
@@ -48,11 +44,7 @@ pub async fn insert_subscriber(pool: &PgPool, form: &FormData) -> Result<(), sql
         Utc::now()
     )
     .execute(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to execute query: {:?}", e);
-        e
-    })?;
+    .await?;
 
     Ok(())
 }
