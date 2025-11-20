@@ -1,5 +1,4 @@
-use secrecy::ExposeSecret;
-use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
 use zero2prod_axum::{
     configuration::get_configuration,
@@ -13,13 +12,15 @@ async fn main() -> Result<(), std::io::Error> {
     init_subscriber(subscriber);
 
     let configuration = get_configuration().expect("Failed to read configuration.");
-    let db_pool = PgPool::connect(&configuration.database.connection_string().expose_secret())
-        .await
-        .expect("Failed to connection postgres.");
-    let address = format!("127.0.0.1:{}", configuration.application_port);
+    let connection_pool = PgPoolOptions::new().connect_lazy_with(configuration.database.with_db());
+
+    let address = format!(
+        "{}:{}",
+        configuration.application.host, configuration.application.port
+    );
     println!("Listening on: http://{}", address.clone());
     let listener = TcpListener::bind(address).await?;
 
-    run(listener, db_pool).await?.await?;
+    run(listener, connection_pool).await?.await?;
     Ok(())
 }
