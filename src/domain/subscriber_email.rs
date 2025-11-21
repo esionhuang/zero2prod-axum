@@ -1,7 +1,7 @@
 use validator::ValidateEmail;
 
 /// 订阅邮件结构体
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SubscriberEmail(String);
 
 impl SubscriberEmail {
