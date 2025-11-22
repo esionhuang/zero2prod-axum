@@ -14,7 +14,7 @@ struct SendEmailRequest<'a> {
 }
 
 /// 邮件客户端
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct EmailClient {
     /// reqwese::Client 实例,用于发送请求
     http_client: Client,
@@ -66,7 +66,8 @@ impl EmailClient {
             text_body: text_content,
         };
 
-        self.http_client
+        let _ = self
+            .http_client
             .post(&url)
             .header(
                 "X-Postmark-Server-Token",

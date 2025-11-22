@@ -12,13 +12,17 @@ use uuid::Uuid;
 use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
-    routes::{health_check, subscribe},
+    routes::{confirm, health_check, subscribe},
 };
+
+#[derive(Clone)]
+pub struct ApplicationBaseUrl(pub String);
 
 #[derive(Clone)]
 pub struct AppState {
     pub db_pool: PgPool,
     pub email_client: EmailClient,
+    pub base_url: ApplicationBaseUrl,
 }
 
 type Server = axum::serve::Serve<TcpListener, IntoMakeService<Router>, Router>;
@@ -50,7 +54,13 @@ impl Application {
         );
         let listener = TcpListener::bind(address).await?;
         let port = listener.local_addr().unwrap().port();
-        let server = run(listener, connection_pool, email_client).await?;
+        let server = run(
+            listener,
+            connection_pool,
+            email_client,
+            configuration.application.base_url,
+        )
+        .await?;
 
         Ok(Self { port, server })
     }
@@ -68,15 +78,19 @@ pub async fn run(
     listener: TcpListener,
     db_pool: PgPool,
     email_client: EmailClient,
+    base_url: String,
 ) -> Result<axum::serve::Serve<TcpListener, IntoMakeService<Router>, Router>, std::io::Error> {
+    let base_url = ApplicationBaseUrl(base_url);
     let app_state = AppState {
         email_client,
         db_pool,
+        base_url,
     };
 
     let app = Router::new()
         .route("/health_check", get(health_check))
         .route("/subscriptions", post(subscribe))
+        .route("/subscriptions/confirm", get(confirm))
         .with_state(app_state.clone())
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
