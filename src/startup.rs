@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
-    routes::{confirm, health_check, subscribe},
+    routes::{confirm, health_check, publish_newsletter, subscribe},
 };
 
 #[derive(Clone)]
@@ -91,6 +91,7 @@ pub async fn run(
         .route("/health_check", get(health_check))
         .route("/subscriptions", post(subscribe))
         .route("/subscriptions/confirm", get(confirm))
+        .route("/newsletters", post(publish_newsletter))
         .with_state(app_state.clone())
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
