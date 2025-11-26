@@ -1,5 +1,6 @@
 application:
   port: 13000
+  hmac_secret: "faa52941-aa95-42db-ad5f-c5598b3d4165"
 database:
   host: "127.0.0.1"
   port: 5432

@@ -3,6 +3,7 @@ use axum::{
     routing::{IntoMakeService, get, post},
 };
 
+use secrecy::SecretString;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
@@ -12,7 +13,11 @@ use uuid::Uuid;
 use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
-    routes::{confirm, health_check, publish_newsletter, subscribe},
+    routes::{
+        confirm, health_check, home,
+        login::{login, login_form},
+        publish_newsletter, subscribe,
+    },
 };
 
 #[derive(Clone)]
@@ -23,9 +28,13 @@ pub struct AppState {
     pub db_pool: PgPool,
     pub email_client: EmailClient,
     pub base_url: ApplicationBaseUrl,
+    pub secret: HmacSecret,
 }
 
 type Server = axum::serve::Serve<TcpListener, IntoMakeService<Router>, Router>;
+
+#[derive(Clone)]
+pub struct HmacSecret(pub SecretString);
 
 pub struct Application {
     port: u16,
@@ -59,6 +68,7 @@ impl Application {
             connection_pool,
             email_client,
             configuration.application.base_url,
+            configuration.application.hmac_secret,
         )
         .await?;
 
@@ -79,12 +89,14 @@ pub async fn run(
     db_pool: PgPool,
     email_client: EmailClient,
     base_url: String,
+    hmac_secret: SecretString,
 ) -> Result<axum::serve::Serve<TcpListener, IntoMakeService<Router>, Router>, std::io::Error> {
     let base_url = ApplicationBaseUrl(base_url);
     let app_state = AppState {
         email_client,
         db_pool,
         base_url,
+        secret: HmacSecret(hmac_secret.clone()),
     };
 
     let app = Router::new()
@@ -92,6 +104,9 @@ pub async fn run(
         .route("/subscriptions", post(subscribe))
         .route("/subscriptions/confirm", get(confirm))
         .route("/newsletters", post(publish_newsletter))
+        .route("/", get(home))
+        .route("/login", get(login_form))
+        .route("/login", post(login))
         .with_state(app_state.clone())
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
