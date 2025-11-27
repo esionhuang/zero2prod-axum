@@ -3,10 +3,17 @@ use axum::{
     routing::{IntoMakeService, get, post},
 };
 
-use secrecy::SecretString;
+use axum_messages::MessagesManagerLayer;
+use secrecy::{ExposeSecret, SecretString};
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use time::Duration;
 use tokio::net::TcpListener;
 use tower_http::trace::TraceLayer;
+use tower_sessions::{Expiry, SessionManagerLayer};
+use tower_sessions_redis_store::{
+    RedisStore,
+    fred::prelude::{ClientLike, Config, Pool},
+};
 use tracing::info_span;
 use uuid::Uuid;
 
@@ -28,7 +35,6 @@ pub struct AppState {
     pub db_pool: PgPool,
     pub email_client: EmailClient,
     pub base_url: ApplicationBaseUrl,
-    pub secret: HmacSecret,
 }
 
 type Server = axum::serve::Serve<TcpListener, IntoMakeService<Router>, Router>;
@@ -42,7 +48,7 @@ pub struct Application {
 }
 
 impl Application {
-    pub async fn build(configuration: Settings) -> Result<Self, std::io::Error> {
+    pub async fn build(configuration: Settings) -> Result<Self, anyhow::Error> {
         let connection_pool = get_connection_pool(&configuration.database);
 
         let sender_email = configuration
@@ -68,7 +74,7 @@ impl Application {
             connection_pool,
             email_client,
             configuration.application.base_url,
-            configuration.application.hmac_secret,
+            configuration.application.redis_uri,
         )
         .await?;
 
@@ -89,15 +95,30 @@ pub async fn run(
     db_pool: PgPool,
     email_client: EmailClient,
     base_url: String,
-    hmac_secret: SecretString,
-) -> Result<axum::serve::Serve<TcpListener, IntoMakeService<Router>, Router>, std::io::Error> {
+    redis_uri: SecretString,
+) -> Result<axum::serve::Serve<TcpListener, IntoMakeService<Router>, Router>, anyhow::Error> {
     let base_url = ApplicationBaseUrl(base_url);
     let app_state = AppState {
         email_client,
         db_pool,
         base_url,
-        secret: HmacSecret(hmac_secret.clone()),
     };
+
+    let redis_pool = Pool::new(
+        Config::from_url(redis_uri.expose_secret())?,
+        None,
+        None,
+        None,
+        6,
+    )
+    .unwrap();
+
+    let _redis_conn = redis_pool.connect();
+    redis_pool.wait_for_connect().await?;
+    let redis_store = RedisStore::new(redis_pool);
+    let session_layer = SessionManagerLayer::new(redis_store)
+        .with_secure(false)
+        .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
 
     let app = Router::new()
         .route("/health_check", get(health_check))
@@ -108,6 +129,8 @@ pub async fn run(
         .route("/login", get(login_form))
         .route("/login", post(login))
         .with_state(app_state.clone())
+        .layer(MessagesManagerLayer)
+        .layer(session_layer)
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
                 let request_id = Uuid::new_v4();

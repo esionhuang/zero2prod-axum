@@ -3,9 +3,8 @@ use axum::{
     extract::State,
     response::{IntoResponse, Redirect, Response},
 };
-use hmac::{Hmac, Mac};
-use reqwest::header::LOCATION;
-use secrecy::{ExposeSecret, SecretString};
+use axum_messages::Messages;
+use secrecy::SecretString;
 
 use crate::{AppState, AuthError, Credentials, routes::error_chain_fmt, validate_credentials};
 
@@ -30,35 +29,14 @@ impl std::fmt::Debug for LoginError {
     }
 }
 
-impl IntoResponse for LoginError {
-    fn into_response(self) -> Response {
-        let query_string = format!("{}", urlencoding::Encoded::new(self.to_string()));
-
-        let secret: &[u8] = &Vec::new();
-        let hmac_tag = {
-            let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret).unwrap();
-            mac.update(query_string.as_bytes());
-            mac.finalize().into_bytes()
-        };
-
-        Response::builder()
-            .status(axum::http::StatusCode::SEE_OTHER)
-            .header(
-                LOCATION,
-                format!("/login?{}&tag={:x}", query_string, hmac_tag),
-            )
-            .body(axum::body::Body::empty())
-            .unwrap()
-    }
-}
-
 #[tracing::instrument(
-    name = "", 
+    name = "",
     skip(state, form),
     fields(username = tracing::field::Empty,user_id=tracing::field::Empty)
 )]
 pub async fn login(
     State(state): State<AppState>,
+    flash: Messages,
     Form(form): Form<FormData>,
 ) -> Result<Response, Response> {
     let credentials = Credentials {
@@ -73,25 +51,15 @@ pub async fn login(
             tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
             Ok((axum::http::StatusCode::SEE_OTHER, Redirect::to("/")).into_response())
         }
-        Err(e) => {
-            let e = match e {
-                AuthError::InvalidCredentials(_) => LoginError::AuthError(e.into()),
-                AuthError::UnexpectedError(_) => LoginError::UnexpectedError(e.into()),
+        Err(err) => {
+            let error = match err {
+                AuthError::InvalidCredentials(_) => LoginError::AuthError(err.into()),
+                AuthError::UnexpectedError(_) => LoginError::UnexpectedError(err.into()),
             };
 
-            let query_string = format!("error={}", urlencoding::Encoded::new(e.to_string()));
-            let hmac_tag = {
-                let mut mac =
-                    Hmac::<sha2::Sha256>::new_from_slice(state.secret.0.expose_secret().as_bytes())
-                        .unwrap();
-                mac.update(query_string.as_bytes());
-                mac.finalize().into_bytes()
-            };
+            let _flash = flash.error(error.to_string());
 
-            Err(
-                Redirect::to(&format!("/login?{}&tag={:x}", &query_string, hmac_tag))
-                    .into_response(),
-            )
+            Err(Redirect::to("/login").into_response())
         }
     }
 }
