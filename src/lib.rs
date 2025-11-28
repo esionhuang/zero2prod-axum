@@ -6,12 +6,10 @@ pub mod routes;
 pub mod session_state;
 pub mod startup;
 pub mod temeletry;
+pub mod utils;
 
 pub use authentication::*;
 pub use configuration::*;
-pub use domain::*;
 pub use email_client::*;
-pub use routes::*;
 pub use session_state::*;
 pub use startup::*;
-pub use temeletry::*;

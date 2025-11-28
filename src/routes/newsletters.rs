@@ -65,7 +65,7 @@ impl IntoResponse for PublishError {
 }
 
 #[tracing::instrument(
-    name = "Publish a newsletter issue", 
+    name = "Publish a newsletter issue",
     skip(state, headers, body),
     fields(username = tracing::field::Empty,user_id = tracing::field::Empty)
 )]

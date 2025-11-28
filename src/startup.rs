@@ -21,9 +21,13 @@ use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
     routes::{
-        admin_dashboard, confirm, health_check, home,
-        login::{login, login_form},
-        publish_newsletter, subscribe,
+        admin::password::{change_password, change_password_form},
+        admin_dashboard, confirm, health_check,
+        home::{
+            self,
+            login::{login, login_form},
+        },
+        log_out, publish_newsletter, subscribe,
     },
 };
 
@@ -125,10 +129,13 @@ pub async fn run(
         .route("/subscriptions", post(subscribe))
         .route("/subscriptions/confirm", get(confirm))
         .route("/newsletters", post(publish_newsletter))
-        .route("/", get(home))
+        .route("/", get(home::home))
         .route("/login", get(login_form))
         .route("/login", post(login))
         .route("/admin/dashboard", get(admin_dashboard))
+        .route("/admin/password", get(change_password_form))
+        .route("/admin/password", post(change_password))
+        .route("/admin/logout", post(log_out))
         .with_state(app_state.clone())
         .layer(MessagesManagerLayer)
         .layer(session_layer)

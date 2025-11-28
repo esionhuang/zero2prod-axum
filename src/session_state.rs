@@ -23,6 +23,11 @@ impl TypedSession {
     pub async fn cycle_id(&self) -> Result<(), SessionError> {
         self.0.cycle_id().await
     }
+
+    /// 登出
+    pub async fn log_out(&self) -> Result<(), SessionError> {
+        self.0.flush().await
+    }
 }
 
 impl<S> FromRequestParts<S> for TypedSession
