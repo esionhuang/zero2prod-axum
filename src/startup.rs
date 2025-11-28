@@ -21,7 +21,7 @@ use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
     routes::{
-        confirm, health_check, home,
+        admin_dashboard, confirm, health_check, home,
         login::{login, login_form},
         publish_newsletter, subscribe,
     },
@@ -118,7 +118,7 @@ pub async fn run(
     let redis_store = RedisStore::new(redis_pool);
     let session_layer = SessionManagerLayer::new(redis_store)
         .with_secure(false)
-        .with_expiry(Expiry::OnInactivity(Duration::seconds(10)));
+        .with_expiry(Expiry::OnInactivity(Duration::hours(24)));
 
     let app = Router::new()
         .route("/health_check", get(health_check))
@@ -128,6 +128,7 @@ pub async fn run(
         .route("/", get(home))
         .route("/login", get(login_form))
         .route("/login", post(login))
+        .route("/admin/dashboard", get(admin_dashboard))
         .with_state(app_state.clone())
         .layer(MessagesManagerLayer)
         .layer(session_layer)
@@ -145,7 +146,8 @@ pub async fn run(
     // .layer(axum_messages::MessagesManagerLayer)
     // .with_state(db_pool);
 
-    Ok(axum::serve(listener, app.into_make_service()))
+    let server = axum::serve(listener, app.into_make_service());
+    Ok(server)
 }
 
 pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {

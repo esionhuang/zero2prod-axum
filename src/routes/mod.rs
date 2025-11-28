@@ -1,9 +1,11 @@
-pub mod health_check;
-pub mod home;
-pub mod newsletters;
-pub mod subscriptions;
-pub mod subscriptions_confirm;
+mod admin;
+mod health_check;
+mod home;
+mod newsletters;
+mod subscriptions;
+mod subscriptions_confirm;
 
+pub use admin::*;
 pub use health_check::*;
 pub use home::*;
 pub use newsletters::*;
