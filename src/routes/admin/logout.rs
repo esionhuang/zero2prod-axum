@@ -4,11 +4,7 @@ use axum_messages::Messages;
 use crate::{TypedSession, utils::e500};
 
 pub async fn log_out(session: TypedSession, flash: Messages) -> Result<Response, Response> {
-    if session.get_user_id().await.map_err(e500)?.is_none() {
-        Ok(Redirect::to("/login").into_response())
-    } else {
-        session.log_out().await.map_err(e500)?;
-        flash.info("You have successfully logged out.");
-        Ok(Redirect::to("/login").into_response())
-    }
+    session.log_out().await.map_err(e500)?;
+    flash.info("You have successfully logged out.");
+    Ok(Redirect::to("/login").into_response())
 }

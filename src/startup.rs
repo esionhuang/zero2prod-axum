@@ -20,6 +20,7 @@ use uuid::Uuid;
 use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
+    reject_anonymous_user,
     routes::{
         admin::password::{change_password, change_password_form},
         admin_dashboard, confirm, health_check,
@@ -125,17 +126,22 @@ pub async fn run(
         .with_expiry(Expiry::OnInactivity(Duration::hours(24)));
 
     let app = Router::new()
-        .route("/health_check", get(health_check))
-        .route("/subscriptions", post(subscribe))
-        .route("/subscriptions/confirm", get(confirm))
-        .route("/newsletters", post(publish_newsletter))
         .route("/", get(home::home))
         .route("/login", get(login_form))
         .route("/login", post(login))
-        .route("/admin/dashboard", get(admin_dashboard))
-        .route("/admin/password", get(change_password_form))
-        .route("/admin/password", post(change_password))
-        .route("/admin/logout", post(log_out))
+        .route("/health_check", get(health_check))
+        .route("/newsletters", post(publish_newsletter))
+        .route("/subscriptions", post(subscribe))
+        .route("/subscriptions/confirm", get(confirm))
+        .nest(
+            "/admin",
+            Router::new()
+                .route("/dashboard", get(admin_dashboard))
+                .route("/password", get(change_password_form))
+                .route("/password", post(change_password))
+                .route("/logout", post(log_out))
+                .layer(axum::middleware::from_fn(reject_anonymous_user)),
+        )
         .with_state(app_state.clone())
         .layer(MessagesManagerLayer)
         .layer(session_layer)

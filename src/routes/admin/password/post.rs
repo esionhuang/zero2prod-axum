@@ -1,5 +1,5 @@
 use axum::{
-    Form,
+    Extension, Form,
     extract::State,
     response::{IntoResponse, Redirect, Response},
 };
@@ -7,7 +7,7 @@ use axum_messages::Messages;
 use secrecy::{ExposeSecret, SecretString};
 
 use crate::{
-    AppState, AuthError, Credentials, TypedSession, routes::get_username, utils::e500,
+    AppState, AuthError, Credentials, UserId, routes::get_username, utils::e500,
     validate_credentials,
 };
 
@@ -21,7 +21,7 @@ pub struct FormData {
 pub async fn change_password(
     State(state): State<AppState>,
     flash: Messages,
-    session: TypedSession,
+    Extension(user_id): Extension<UserId>,
     Form(form): Form<FormData>,
 ) -> Result<Response, Response> {
     // 验证新密码与确认密码是否相同
@@ -36,13 +36,7 @@ pub async fn change_password(
         return Ok(Redirect::to("/admin/password").into_response());
     }
 
-    // 如果用户未登录,重定向到登录
-    let user_id = session.get_user_id().await.map_err(e500)?;
-    if user_id.is_none() {
-        return Ok(Redirect::to("/login").into_response());
-    }
-    let user_id = user_id.unwrap();
-    let username = get_username(user_id, &state.db_pool).await.map_err(e500)?;
+    let username = get_username(*user_id, &state.db_pool).await.map_err(e500)?;
 
     // 验证用户名和密码是否正确
     let credentials = Credentials {
@@ -60,7 +54,7 @@ pub async fn change_password(
         };
     }
 
-    crate::authentication::change_password(user_id, form.new_password, &state.db_pool)
+    crate::authentication::change_password(*user_id, form.new_password, &state.db_pool)
         .await
         .map_err(e500)?;
     flash.error("Your password has been changed.");

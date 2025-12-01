@@ -1,25 +1,21 @@
 use anyhow::Context;
 use axum::{
+    Extension,
     extract::State,
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse},
 };
 use handlebars::Handlebars;
 use reqwest::StatusCode;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{AppState, TypedSession, utils::e500};
+use crate::{AppState, UserId, utils::e500};
 
 pub async fn admin_dashboard(
     State(state): State<AppState>,
-    session: TypedSession,
+    Extension(user_id): Extension<UserId>,
 ) -> Result<axum::response::Response, axum::response::Response> {
-    let username = if let Some(user_id) = session.get_user_id().await.map_err(e500)? {
-        tracing::info!("User id is:{}", user_id.clone());
-        get_username(user_id, &state.db_pool).await.map_err(e500)?
-    } else {
-        return Ok(Redirect::to("/login").into_response());
-    };
+    let username = get_username(*user_id, &state.db_pool).await.map_err(e500)?;
 
     let html = Handlebars::new()
         .render_template(
