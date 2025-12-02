@@ -1,30 +1,28 @@
 use anyhow::Context;
 
 use axum::{
-    Json,
+    Extension, Form,
     extract::State,
-    http::{HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
+    http::{HeaderValue, StatusCode},
+    response::{IntoResponse, Redirect, Response},
 };
-use base64::Engine;
-use secrecy::SecretString;
+use axum_messages::Messages;
 use sqlx::PgPool;
 
 use crate::{
-    AppState, Credentials, authentication::AuthError, domain::SubscriberEmail,
-    routes::error_chain_fmt, validate_credentials,
+    AppState, UserId,
+    domain::SubscriberEmail,
+    idempotency::{IdempotencyKey, NextAction, save_response, try_processing},
+    routes::error_chain_fmt,
+    utils::{e400, e500},
 };
 
-#[derive(serde::Deserialize)]
-pub struct BodyData {
+#[derive(Debug, serde::Deserialize)]
+pub struct FormData {
     title: String,
-    content: Content,
-}
-
-#[derive(serde::Deserialize)]
-pub struct Content {
-    html: String,
-    text: String,
+    text_content: String,
+    html_content: String,
+    idempotency_key: String,
 }
 
 struct ConfirmedSubscriber {
@@ -66,42 +64,50 @@ impl IntoResponse for PublishError {
 
 #[tracing::instrument(
     name = "Publish a newsletter issue",
-    skip(state, headers, body),
+    skip(state,  form),
     fields(username = tracing::field::Empty,user_id = tracing::field::Empty)
 )]
 pub async fn publish_newsletter(
     State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(body): Json<BodyData>,
-) -> anyhow::Result<Response, PublishError> {
-    let credentials = basic_authentication(&headers).map_err(PublishError::AuthError)?;
-    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
+    flash: Messages,
+    Extension(user_id): Extension<UserId>,
+    Form(form): Form<FormData>,
+) -> anyhow::Result<Response, Response> {
+    let FormData {
+        title,
+        text_content,
+        html_content,
+        idempotency_key,
+    } = form;
 
-    let user_id = validate_credentials(credentials, &state.db_pool)
+    let idempotency_key: IdempotencyKey = idempotency_key.try_into().map_err(e400)?;
+
+    let transaction = match try_processing(&state.db_pool, &idempotency_key, *user_id)
         .await
-        .map_err(|e| match e {
-            AuthError::InvalidCredentials(_) => PublishError::AuthError(e.into()),
-            AuthError::UnexpectedError(_) => PublishError::UnexpectedError(e.into()),
-        })?;
+        .map_err(e500)?
+    {
+        NextAction::StartProcessing(t) => t,
+        NextAction::ReturnSavedResponse(response) => {
+            success_message(flash.clone());
+            return Ok(response);
+        }
+    };
 
-    tracing::Span::current().record("user_id", &tracing::field::display(&user_id));
+    let subscribers = get_confirmed_subscriber(&state.db_pool)
+        .await
+        .map_err(e500)?;
 
-    let subscribers = get_confirmed_subscriber(&state.db_pool).await?;
     for subscriber in subscribers {
         match subscriber {
             Ok(subscriber) => {
                 state
                     .email_client
-                    .send_email(
-                        &subscriber.email,
-                        &body.title,
-                        &body.content.html,
-                        &body.content.text,
-                    )
+                    .send_email(&subscriber.email, &title, &html_content, &text_content)
                     .await
                     .with_context(|| {
                         format!("Failed to send newsletter issue to {}", subscriber.email)
-                    })?;
+                    })
+                    .map_err(e500)?;
             }
             Err(error) => {
                 tracing::warn!(
@@ -113,7 +119,13 @@ pub async fn publish_newsletter(
         }
     }
 
-    Ok(StatusCode::OK.into_response())
+    success_message(flash.clone());
+    let response = Redirect::to("/admin/newsletters").into_response();
+    let response = save_response(transaction, &idempotency_key, *user_id, response)
+        .await
+        .map_err(e500)?;
+
+    Ok(response)
 }
 
 /// 获取所有确认的订阅者
@@ -140,37 +152,6 @@ async fn get_confirmed_subscriber(
     Ok(confirmed_subscribers)
 }
 
-fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Error> {
-    let header_value = headers
-        .get("Authorization")
-        .context("The 'Authorization' header was missing")?
-        .to_str()
-        .context("The 'Authorization' header was not a valid UTF8 string.")?;
-
-    let base64encoded_segment = header_value
-        .strip_prefix("Basic ")
-        .context("The authorization schema was not 'Basic'.")?;
-
-    let decoded_bytes = base64::engine::general_purpose::STANDARD
-        .decode(base64encoded_segment)
-        .context("Failed to base64-decode 'Basic' credentials.")?;
-
-    let decoded_credentials = String::from_utf8(decoded_bytes)
-        .context("The decoded credential string is not valid UTF8.")?;
-
-    let mut credentials = decoded_credentials.splitn(2, ':');
-    let username = credentials
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("A username must be provided in 'Basic' auth."))?
-        .to_string();
-
-    let password = credentials
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("A password must be provided in 'Basic' auth."))?
-        .to_string();
-
-    Ok(Credentials {
-        username,
-        password: SecretString::from(password),
-    })
+fn success_message(flash: Messages) {
+    flash.info("The newsletter issue has been published!");
 }

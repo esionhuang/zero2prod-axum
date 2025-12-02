@@ -10,6 +10,6 @@ database:
   database_name: "newsletter"
 email_client:
   base_url: "localhost"
-  sender_email: "test@gmail.com"
-  authorization_token: "input-valid-secret-token"
+  sender_email: "it-09@ace-tec.com"
+  authorization_token: "7b4ff3b1-9919-41e5-9eb6-a087f52c4a3c"
   timeout_milliseconds: 10000

@@ -28,7 +28,9 @@ use crate::{
             self,
             login::{login, login_form},
         },
-        log_out, publish_newsletter, subscribe,
+        log_out,
+        newsletter::{publish_newsletter, publish_newsletter_form},
+        subscribe,
     },
 };
 
@@ -130,7 +132,6 @@ pub async fn run(
         .route("/login", get(login_form))
         .route("/login", post(login))
         .route("/health_check", get(health_check))
-        .route("/newsletters", post(publish_newsletter))
         .route("/subscriptions", post(subscribe))
         .route("/subscriptions/confirm", get(confirm))
         .nest(
@@ -140,6 +141,8 @@ pub async fn run(
                 .route("/password", get(change_password_form))
                 .route("/password", post(change_password))
                 .route("/logout", post(log_out))
+                .route("/newsletters", post(publish_newsletter))
+                .route("/newsletters", get(publish_newsletter_form))
                 .layer(axum::middleware::from_fn(reject_anonymous_user)),
         )
         .with_state(app_state.clone())

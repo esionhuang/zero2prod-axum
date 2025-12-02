@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Send a newsletter issue</title>
+  </head>
+  <body>
+    {{{messages}}}
+    <form action="/admin/newsletters" method="post">
+      <label
+        >Title
+        <input type="text" placeholder="Enter a title" name="title" />
+      </label>
+      <br />
+      <label
+        >HTML content
+        <input
+          type="text"
+          placeholder="Enter HTML content"
+          name="html_content"
+        />
+      </label>
+      <br />
+      <label
+        >Text content
+        <input
+          type="text"
+          placeholder="Enter text content"
+          name="text_content"
+        />
+      </label>
+      <br />
+      <input
+        hidden
+        type="text"
+        name="idempotency_key"
+        value="{idempotency_key}"
+      />
+      <br />
+      <input
+        type="text"
+        hidden
+        name="idempotency_key"
+        value="{{{idempotency_key}}}"
+      />
+      <button type="submit">Send a newsletter issue</button>
+    </form>
+    <p><a href="/admin/dashboard">&lt;- Back</a></p>
+  </body>
+</html>
