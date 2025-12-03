@@ -7,11 +7,12 @@ use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 use wiremock::MockServer;
 use zero2prod_axum::{
-    Application,
+    Application, EmailClient,
     configuration::{DatabaseSettings, get_configuration},
     get_connection_pool,
+    issue_delivery_worker::{ExecutionOutcome, try_execute_task},
     temeletry::{get_subscriber, init_subscriber},
-}; // 或使用 thread_rng
+};
 
 // 使用 once_cell 的懒加载定义遥测实现,确保在多个测试并发执行时只初始化一次遥测实现
 static TRACING: Lazy<()> = Lazy::new(|| {
@@ -82,6 +83,7 @@ pub struct TestApp {
     pub port: u16,
     pub test_user: TestUser,
     pub api_client: reqwest::Client,
+    pub email_client: EmailClient,
 }
 
 impl TestApp {
@@ -191,7 +193,7 @@ impl TestApp {
         ConfirmationLinks { html, plain_text }
     }
 
-    pub async fn post_publish_newsletters<Body>(&self, body: &Body) -> reqwest::Response
+    pub async fn post_publish_newsletter<Body>(&self, body: &Body) -> reqwest::Response
     where
         Body: serde::Serialize,
     {
@@ -214,6 +216,18 @@ impl TestApp {
 
     pub async fn get_publish_newsletter_html(&self) -> String {
         self.get_publish_newsletter().await.text().await.unwrap()
+    }
+
+    pub async fn dispatch_all_pending_emails(&self) {
+        loop {
+            if let ExecutionOutcome::EmptyQueue =
+                try_execute_task(&self.db_pool, &self.email_client)
+                    .await
+                    .unwrap()
+            {
+                break;
+            }
+        }
     }
 }
 
@@ -251,6 +265,7 @@ pub async fn spawn_app() -> TestApp {
         port: application_port,
         test_user: TestUser::generate(),
         api_client: client,
+        email_client: configuration.email_client.client(),
     };
 
     test_app.test_user.store(&test_app.db_pool).await;
